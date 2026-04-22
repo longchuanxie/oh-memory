@@ -65,3 +65,10 @@ console.error('[oh-memory] Failed to load graph cache:', error)
 ```
 
 规则：记录耗时/数量/状态 | 敏感信息脱敏 | 避免循环打印
+编码前必须规划好程序的架构和模块，避免重复代码和逻辑错误，保持代码的可维护性和可扩展性。
+项目代码以LLM驱动为目标，降低代码的复杂度和重复性，提高代码的易读性。
+代码编写时注意opencode的要求：
+https://opencode.ai/docs/agents/
+https://opencode.ai/docs/zh-cn/plugins/
+https://opencode.ai/docs/zh-cn/commands/
+https://opencode.ai/docs/zh-cn/tools/

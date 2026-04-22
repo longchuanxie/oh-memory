@@ -1,21 +1,8 @@
 import { promises as fs } from 'fs'
-import path from 'path'
+
 import matter from 'gray-matter'
-import { exec } from 'child_process'
-import { promisify } from 'util'
-import type { KnowledgePage, PageFrontmatter } from '../types/index.js'
-
-const execAsync = promisify(exec)
-
-export async function ensureDir(dirPath: string): Promise<void> {
-  try {
-    await fs.mkdir(dirPath, { recursive: true })
-  } catch (error) {
-    if ((error as any).code !== 'EEXIST') {
-      throw error
-    }
-  }
-}
+import crypto from 'crypto'
+import type { KnowledgePage, PageFrontmatter, PageLink } from '../types/index.js'
 
 export async function fileExists(filePath: string): Promise<boolean> {
   try {
@@ -28,19 +15,39 @@ export async function fileExists(filePath: string): Promise<boolean> {
 
 export async function readMarkdownFile(filePath: string): Promise<KnowledgePage | null> {
   try {
-    const content = await fs.readFile(filePath, 'utf-8')
-    const { data, content: markdown } = matter(content)
-    
-    const links = extractLinks(markdown)
-    
+    if (!await fileExists(filePath)) return null
+
+    const rawContent = await fs.readFile(filePath, 'utf-8')
+    const { data, content } = matter(rawContent)
+    const links = extractLinks(content)
+
     return {
       frontmatter: data as PageFrontmatter,
-      content: markdown,
+      content: content.trim(),
       links,
     }
-  } catch (error) {
+  } catch {
     return null
   }
+}
+
+function removeUndefinedValues(obj: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined) continue
+
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      const cleaned = removeUndefinedValues(value as Record<string, unknown>)
+      if (Object.keys(cleaned).length > 0) {
+        result[key] = cleaned
+      }
+    } else {
+      result[key] = value
+    }
+  }
+
+  return result
 }
 
 export async function writeMarkdownFile(
@@ -48,8 +55,40 @@ export async function writeMarkdownFile(
   frontmatter: PageFrontmatter,
   content: string
 ): Promise<void> {
-  const fileContent = matter.stringify(content, frontmatter)
+  const cleanedFrontmatter = removeUndefinedValues(frontmatter as unknown as Record<string, unknown>)
+  const fileContent = matter.stringify(content, cleanedFrontmatter)
   await fs.writeFile(filePath, fileContent, 'utf-8')
+}
+
+
+
+
+export function extractLinks(content: string): PageLink[] {
+  const linkRegex = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g
+  const seen = new Set<string>()
+  const links: PageLink[] = []
+
+  const lines = content.split('\n')
+  let currentSection: string | undefined
+
+  for (const line of lines) {
+    const headingMatch = line.match(/^#{2,3}\s+(.+)/)
+    if (headingMatch) {
+      currentSection = headingMatch[1].trim()
+    }
+
+    let match: RegExpExecArray | null
+    const regex = new RegExp(linkRegex.source, 'g')
+    while ((match = regex.exec(line)) !== null) {
+      const target = match[1].trim()
+      if (!seen.has(target)) {
+        seen.add(target)
+        links.push({ target, section: currentSection })
+      }
+    }
+  }
+
+  return links
 }
 
 export async function listFiles(
@@ -62,16 +101,14 @@ export async function listFiles(
     const entries = await fs.readdir(currentPath, { withFileTypes: true })
     
     for (const entry of entries) {
-      const fullPath = path.join(currentPath, entry.name)
+      const fullPath = `${currentPath}/${entry.name}`
       
       if (entry.isDirectory()) {
         if (!shouldIgnore(fullPath)) {
           await walk(fullPath)
         }
-      } else if (entry.isFile()) {
-        if (matchesPatterns(fullPath, patterns)) {
-          files.push(fullPath)
-        }
+      } else if (entry.isFile() && matchesPatterns(entry.name, patterns)) {
+        files.push(fullPath)
       }
     }
   }
@@ -80,211 +117,21 @@ export async function listFiles(
   return files
 }
 
-export function extractLinks(content: string): string[] {
-  const linkRegex = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g
-  const links: string[] = []
-  let match
-  
-  while ((match = linkRegex.exec(content)) !== null) {
-    links.push(match[1].trim())
-  }
-  
-  return [...new Set(links)]
-}
-
 export function shouldIgnore(filePath: string): boolean {
   const ignorePatterns = [
-    'node_modules',
-    '.git',
-    '.memory',
-    'dist',
-    'build',
-    '.next',
-    '__pycache__',
-    '.cache',
-    'coverage',
-    '.nyc_output',
-    'vendor',
-    'target',
-    'out',
-    'bin',
-    'obj',
-    '.gradle',
-    '.mvn',
-    'Pods',
-    'DerivedData',
-    '.idea',
-    '.vscode',
-    '.vs',
+    'node_modules', '.git', '.memory', 'dist', 'build', '.next',
+    '__pycache__', '.cache', 'coverage', '.nyc_output', 'vendor',
+    'target', 'out', 'bin', 'obj', '.gradle', '.mvn', 'Pods',
+    'DerivedData', '.idea', '.vscode', '.vs',
   ]
-  
-  const ignoreFiles = [
-    '.DS_Store',
-    'Thumbs.db',
-    '.env',
-    '.env.local',
-    '.env.development.local',
-    '.env.test.local',
-    '.env.production.local',
-    'npm-debug.log',
-    'yarn-debug.log',
-    'yarn-error.log',
-    'package-lock.json',
-    'yarn.lock',
-    'pnpm-lock.yaml',
-  ]
-  
-  const fileName = path.basename(filePath)
-  
-  if (ignoreFiles.includes(fileName)) {
-    return true
-  }
-  
   return ignorePatterns.some(pattern => filePath.includes(pattern))
 }
 
-export function matchesPatterns(filePath: string, patterns: string[]): boolean {
-  const ext = path.extname(filePath)
-  const fileName = path.basename(filePath)
-  
-  const supportedExtensions = [
-    '.md', '.txt', '.js', '.ts', '.jsx', '.tsx',
-    '.py', '.java', '.go', '.rs', '.rb',
-    '.json', '.yaml', '.yml', '.toml',
-    '.sh', '.bash', '.zsh',
-    '.sql',
-    '.proto',
-    '.graphql', '.gql',
-    '.vue', '.svelte',
-    '.css', '.scss', '.sass', '.less',
-    '.html', '.htm',
-  ]
-  
-  const ignoredExtensions = [
-    '.class',
-    '.jar',
-    '.war',
-    '.ear',
-    '.dll',
-    '.exe',
-    '.so',
-    '.dylib',
-    '.o',
-    '.obj',
-    '.a',
-    '.lib',
-    '.pyc',
-    '.pyo',
-    '.pyd',
-    '.swp',
-    '.swo',
-    '.log',
-    '.tmp',
-    '.temp',
-    '.bak',
-    '.backup',
-    '.orig',
-    '.min.js',
-    '.min.css',
-    '.map',
-    '.lock',
-  ]
-  
-  if (ignoredExtensions.some(ignoredExt => fileName.endsWith(ignoredExt) || ext === ignoredExt)) {
-    return false
-  }
-  
-  return supportedExtensions.includes(ext)
+export function matchesPatterns(fileName: string, patterns: string[]): boolean {
+  return patterns.some(pattern => fileName.endsWith(pattern))
 }
 
 export async function getFileHash(filePath: string): Promise<string> {
   const content = await fs.readFile(filePath)
-  const hash = Bun.hash(content)
-  return hash.toString()
-}
-
-export async function copyTemplate(
-  templatePath: string,
-  targetPath: string,
-  replacements: Record<string, string> = {}
-): Promise<void> {
-  let content = await fs.readFile(templatePath, 'utf-8')
-  
-  for (const [key, value] of Object.entries(replacements)) {
-    content = content.replace(new RegExp(`{{${key}}}`, 'g'), value)
-  }
-  
-  await fs.writeFile(targetPath, content, 'utf-8')
-}
-
-export async function isGitRepository(projectDir: string): Promise<boolean> {
-  try {
-    await execAsync('git rev-parse --git-dir', { cwd: projectDir })
-    return true
-  } catch (error) {
-    return false
-  }
-}
-
-export async function isFileInGit(
-  filePath: string,
-  projectDir: string
-): Promise<boolean> {
-  try {
-    const absolutePath = path.resolve(projectDir, filePath)
-    const relativePath = path.relative(projectDir, absolutePath)
-    
-    const { stdout } = await execAsync(
-      `git ls-files --error-unmatch "${relativePath}"`,
-      { cwd: projectDir }
-    )
-    
-    return stdout.trim().length > 0
-  } catch (error) {
-    return false
-  }
-}
-
-export async function getGitTrackedFiles(
-  projectDir: string,
-  patterns: string[] = []
-): Promise<string[]> {
-  try {
-    const { stdout } = await execAsync(
-      'git ls-files',
-      { cwd: projectDir }
-    )
-    
-    const files = stdout
-      .split('\n')
-      .filter(file => file.trim().length > 0)
-      .map(file => path.join(projectDir, file))
-      .filter(file => !shouldIgnore(file) && matchesPatterns(file, patterns))
-    
-    return files
-  } catch (error) {
-    return []
-  }
-}
-
-export async function getGitUntrackedFiles(
-  projectDir: string,
-  patterns: string[] = []
-): Promise<string[]> {
-  try {
-    const { stdout } = await execAsync(
-      'git ls-files --others --exclude-standard',
-      { cwd: projectDir }
-    )
-    
-    const files = stdout
-      .split('\n')
-      .filter(file => file.trim().length > 0)
-      .map(file => path.join(projectDir, file))
-      .filter(file => !shouldIgnore(file) && matchesPatterns(file, patterns))
-    
-    return files
-  } catch (error) {
-    return []
-  }
+  return crypto.createHash('md5').update(content).digest('hex')
 }

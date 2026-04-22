@@ -5,7 +5,7 @@ agent: build
 
 Query the knowledge base with the following question: $ARGUMENTS
 
-Please use the `memory-query-kb` tool to search for relevant information.
+Please use the `memory-query` tool to search for relevant information.
 
 After querying:
 1. Present the answer with citations to source pages

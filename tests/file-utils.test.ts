@@ -4,7 +4,6 @@ import path from 'path'
 import os from 'os'
 
 import {
-  ensureDir,
   fileExists,
   readMarkdownFile,
   writeMarkdownFile,
@@ -13,8 +12,6 @@ import {
   shouldIgnore,
   matchesPatterns,
   getFileHash,
-  copyTemplate,
-  isGitRepository,
 } from '../src/utils/file-utils'
 
 describe('file-utils', () => {
@@ -31,37 +28,6 @@ describe('file-utils', () => {
     } catch {
       // ignore cleanup errors
     }
-  })
-
-  describe('ensureDir', () => {
-    it('should create directory if not exists', async () => {
-      const dirPath = path.join(testDir, 'new-dir')
-
-      await ensureDir(dirPath)
-
-      const exists = await fs.access(dirPath).then(() => true).catch(() => false)
-      expect(exists).toBe(true)
-    })
-
-    it('should create nested directories', async () => {
-      const dirPath = path.join(testDir, 'a', 'b', 'c')
-
-      await ensureDir(dirPath)
-
-      const exists = await fs.access(dirPath).then(() => true).catch(() => false)
-      expect(exists).toBe(true)
-    })
-
-    it('should not throw if directory already exists', async () => {
-      const dirPath = path.join(testDir, 'existing-dir')
-      await fs.mkdir(dirPath)
-
-      // Should not throw
-      await ensureDir(dirPath)
-
-      const exists = await fs.access(dirPath).then(() => true).catch(() => false)
-      expect(exists).toBe(true)
-    })
   })
 
   describe('fileExists', () => {
@@ -195,6 +161,38 @@ title: Links Test
       expect(content).toContain('title: Updated')
       expect(content).toContain('Updated content')
     })
+
+    it('should handle nested undefined values in frontmatter', async () => {
+      const filePath = path.join(testDir, 'nested-undefined.md')
+      const frontmatter = {
+        id: 'nested-test',
+        title: 'Nested Undefined Test',
+        type: 'entity' as const,
+        tags: ['test'],
+        date: '2026-04-20',
+        updated: '2026-04-20',
+        summary: {
+          description: 'Test description',
+          keywords: ['keyword1', 'keyword2'],
+          keyFunctions: undefined,
+        },
+        relations: {
+          dependsOn: ['dep1'],
+          usedBy: [],
+          relatedTo: undefined as unknown as string[],
+        },
+      }
+
+      await writeMarkdownFile(filePath, frontmatter, '# Test Content')
+
+      const content = await fs.readFile(filePath, 'utf-8')
+      expect(content).toContain('id: nested-test')
+      expect(content).toContain('description: Test description')
+      expect(content).toContain('- keyword1')
+      expect(content).toContain('- dep1')
+      expect(content).not.toContain('keyFunctions:')
+      expect(content).not.toContain('relatedTo:')
+    })
   })
 
   describe('listFiles', () => {
@@ -303,24 +301,6 @@ title: Links Test
       expect(shouldIgnore('/project/.memory/entities/test.md')).toBe(true)
     })
 
-    it('should ignore .DS_Store', () => {
-      expect(shouldIgnore('/project/.DS_Store')).toBe(true)
-    })
-
-    it('should ignore .env files', () => {
-      expect(shouldIgnore('/project/.env')).toBe(true)
-      expect(shouldIgnore('/project/.env.local')).toBe(true)
-    })
-
-    it('should ignore lock files', () => {
-      expect(shouldIgnore('/project/package-lock.json')).toBe(true)
-      expect(shouldIgnore('/project/yarn.lock')).toBe(true)
-    })
-
-    it('should not ignore regular files', () => {
-      expect(shouldIgnore('/project/src/index.ts')).toBe(false)
-    })
-
     it('should ignore dist directory', () => {
       expect(shouldIgnore('/project/dist/bundle.js')).toBe(true)
     })
@@ -328,51 +308,59 @@ title: Links Test
     it('should ignore build directory', () => {
       expect(shouldIgnore('/project/build/output.js')).toBe(true)
     })
+
+    it('should not ignore regular files', () => {
+      expect(shouldIgnore('/project/src/index.ts')).toBe(false)
+    })
+
+    it('should not ignore .DS_Store', () => {
+      expect(shouldIgnore('/project/.DS_Store')).toBe(false)
+    })
+
+    it('should not ignore .env files', () => {
+      expect(shouldIgnore('/project/.env')).toBe(false)
+    })
   })
 
   describe('matchesPatterns', () => {
-    it('should match .md files', () => {
-      expect(matchesPatterns('/project/readme.md', [])).toBe(true)
+    it('should match .md files when pattern provided', () => {
+      expect(matchesPatterns('readme.md', ['.md'])).toBe(true)
     })
 
-    it('should match .ts files', () => {
-      expect(matchesPatterns('/project/src/index.ts', [])).toBe(true)
+    it('should match .ts files when pattern provided', () => {
+      expect(matchesPatterns('index.ts', ['.ts'])).toBe(true)
     })
 
-    it('should match .js files', () => {
-      expect(matchesPatterns('/project/src/index.js', [])).toBe(true)
+    it('should match .js files when pattern provided', () => {
+      expect(matchesPatterns('index.js', ['.js'])).toBe(true)
     })
 
-    it('should match .py files', () => {
-      expect(matchesPatterns('/project/main.py', [])).toBe(true)
+    it('should match .py files when pattern provided', () => {
+      expect(matchesPatterns('main.py', ['.py'])).toBe(true)
+    })
+
+    it('should match .json files when pattern provided', () => {
+      expect(matchesPatterns('package.json', ['.json'])).toBe(true)
+    })
+
+    it('should match .yaml files when pattern provided', () => {
+      expect(matchesPatterns('config.yaml', ['.yaml', '.yml'])).toBe(true)
+    })
+
+    it('should not match when no patterns provided', () => {
+      expect(matchesPatterns('readme.md', [])).toBe(false)
     })
 
     it('should not match .class files', () => {
-      expect(matchesPatterns('/project/Main.class', [])).toBe(false)
+      expect(matchesPatterns('Main.class', ['.ts', '.js'])).toBe(false)
     })
 
     it('should not match .exe files', () => {
-      expect(matchesPatterns('/project/app.exe', [])).toBe(false)
+      expect(matchesPatterns('app.exe', ['.ts', '.js'])).toBe(false)
     })
 
-    it('should not match .min.js files', () => {
-      expect(matchesPatterns('/project/bundle.min.js', [])).toBe(false)
-    })
-
-    it('should not match .map files', () => {
-      expect(matchesPatterns('/project/bundle.js.map', [])).toBe(false)
-    })
-
-    it('should not match .log files', () => {
-      expect(matchesPatterns('/project/debug.log', [])).toBe(false)
-    })
-
-    it('should match .json files', () => {
-      expect(matchesPatterns('/project/package.json', [])).toBe(true)
-    })
-
-    it('should match .yaml files', () => {
-      expect(matchesPatterns('/project/config.yaml', [])).toBe(true)
+    it('should match multiple patterns', () => {
+      expect(matchesPatterns('config.yml', ['.yaml', '.yml'])).toBe(true)
     })
   })
 
@@ -412,49 +400,6 @@ title: Links Test
     })
   })
 
-  describe('copyTemplate', () => {
-    it('should copy template file', async () => {
-      const templatePath = path.join(testDir, 'template.md')
-      const targetPath = path.join(testDir, 'output.md')
-      await fs.writeFile(templatePath, '# Template\n\nContent: {{name}}')
-
-      await copyTemplate(templatePath, targetPath, { name: 'Test' })
-
-      const content = await fs.readFile(targetPath, 'utf-8')
-      expect(content).toContain('Content: Test')
-    })
-
-    it('should replace multiple placeholders', async () => {
-      const templatePath = path.join(testDir, 'template.md')
-      const targetPath = path.join(testDir, 'output.md')
-      await fs.writeFile(templatePath, '{{a}} and {{b}}')
-
-      await copyTemplate(templatePath, targetPath, { a: 'First', b: 'Second' })
-
-      const content = await fs.readFile(targetPath, 'utf-8')
-      expect(content).toBe('First and Second')
-    })
-
-    it('should handle empty replacements', async () => {
-      const templatePath = path.join(testDir, 'template.md')
-      const targetPath = path.join(testDir, 'output.md')
-      await fs.writeFile(templatePath, 'No placeholders here')
-
-      await copyTemplate(templatePath, targetPath)
-
-      const content = await fs.readFile(targetPath, 'utf-8')
-      expect(content).toBe('No placeholders here')
-    })
-  })
-
-  describe('isGitRepository', () => {
-    it('should return false for non-git directory', async () => {
-      const result = await isGitRepository(testDir)
-
-      expect(result).toBe(false)
-    })
-  })
-
   describe('edge cases', () => {
     it('should handle readMarkdownFile with invalid path', async () => {
       const result = await readMarkdownFile('/nonexistent/path/file.md')
@@ -473,7 +418,7 @@ title: Links Test
 
     it('should handle deeply nested directories', async () => {
       const deepDir = path.join(testDir, 'a', 'b', 'c', 'd', 'e')
-      await ensureDir(deepDir)
+      await fs.mkdir(deepDir, { recursive: true })
       await fs.writeFile(path.join(deepDir, 'deep.md'), 'content')
 
       const files = await listFiles(testDir, ['.md'])

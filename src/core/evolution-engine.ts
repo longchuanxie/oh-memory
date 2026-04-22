@@ -28,9 +28,7 @@ export class EvolutionEngine {
   }
 
   async start(): Promise<void> {
-    if (!this.config.enabled) {
-      return
-    }
+    if (!this.config.enabled) return
 
     await this.initializeFileHashes()
 
@@ -83,14 +81,14 @@ export class EvolutionEngine {
 
   private async initializeFileHashes(): Promise<void> {
     const { listFiles, getFileHash } = await import('../utils/file-utils')
-    
+
     const files = await listFiles(this.context.directory, this.config.watchPatterns)
-    
+
     for (const file of files) {
       try {
         const hash = await getFileHash(file)
         this.fileHashes.set(file, hash)
-      } catch (error) {
+      } catch {
         // Ignore errors during initialization
       }
     }
@@ -100,20 +98,16 @@ export class EvolutionEngine {
     const fullPath = path.join(this.context.directory, filename)
 
     for (const pattern of this.config.ignorePatterns) {
-      if (fullPath.includes(pattern)) {
-        return false
-      }
+      if (fullPath.includes(pattern)) return false
     }
 
-    const matchesWatchPattern = this.config.watchPatterns.some(pattern => {
+    return this.config.watchPatterns.some(pattern => {
       if (pattern.includes('*')) {
         const regex = new RegExp(pattern.replace(/\*/g, '.*'))
         return regex.test(fullPath)
       }
       return fullPath.includes(pattern)
     })
-
-    return matchesWatchPattern
   }
 
   private async handleFileChange(filename: string): Promise<void> {
@@ -124,9 +118,7 @@ export class EvolutionEngine {
       const currentHash = await getFileHash(fullPath)
       const previousHash = this.fileHashes.get(fullPath)
 
-      if (currentHash === previousHash) {
-        return
-      }
+      if (currentHash === previousHash) return
 
       this.fileHashes.set(fullPath, currentHash)
 
@@ -173,20 +165,18 @@ export class EvolutionEngine {
   private async updateKnowledgeBase(files: string[]): Promise<void> {
     try {
       const result = await this.knowledgeBase.ingestFiles(files)
-      
-      // 记录更新历史
+
       this.updateHistory.push({
         timestamp: new Date(),
         files,
         createdPages: result.createdPages.length,
         updatedPages: result.updatedPages.length,
       })
-      
-      // 保持历史不超过 100 条
+
       if (this.updateHistory.length > 100) {
         this.updateHistory = this.updateHistory.slice(-100)
       }
-      
+
       await this.context.client.app.log({
         body: {
           service: 'oh-memory',
@@ -194,8 +184,6 @@ export class EvolutionEngine {
           message: 'Knowledge base updated automatically',
           extra: {
             processedFiles: result.processedFiles,
-            createdPages: result.createdPages.length,
-            updatedPages: result.updatedPages.length,
           },
         },
       })
@@ -213,7 +201,7 @@ export class EvolutionEngine {
 
   async scanForChanges(): Promise<string[]> {
     const { listFiles, getFileHash } = await import('../utils/file-utils')
-    
+
     const files = await listFiles(this.context.directory, this.config.watchPatterns)
     const changedFiles: string[] = []
 
@@ -226,7 +214,7 @@ export class EvolutionEngine {
           changedFiles.push(file)
           this.fileHashes.set(file, currentHash)
         }
-      } catch (error) {
+      } catch {
         // Ignore errors during scan
       }
     }

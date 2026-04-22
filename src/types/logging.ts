@@ -30,6 +30,25 @@ export interface LogTransport {
    * @param entry - The log entry to write
    */
   write(entry: LogEntry): void
+
+  /**
+   * Close the transport and release resources
+   */
+  close?(): void | Promise<void>
+}
+
+/**
+ * File transport configuration
+ */
+export interface FileTransportOptions {
+  /** Log file directory path */
+  logDir: string
+  /** Maximum log file size in bytes (default: 5MB) */
+  maxSize?: number
+  /** Maximum number of rotated log files to keep (default: 5) */
+  maxFiles?: number
+  /** Minimum log level for this transport (default: 'info') */
+  level?: LogLevel
 }
 
 /**
@@ -44,4 +63,12 @@ export interface LoggerOptions {
   traceId?: string
   /** Log prefix */
   prefix?: string
+  /** Enable file logging to .memory/logs/ */
+  fileLogging?: boolean
+  /** Log file directory (default: .memory/logs) */
+  logDir?: string
+  /** Maximum log file size in bytes (default: 5MB) */
+  maxLogSize?: number
+  /** Maximum number of rotated log files (default: 5) */
+  maxLogFiles?: number
 }

@@ -2,5 +2,29 @@
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
     "oh-memory"
-  ]
+  ],
+  "agent": {
+    "wiki-generator": {
+      "description": "Generates wiki pages from source code files. Reads code files, analyzes structure and functionality, then creates comprehensive markdown documentation in .memory/ directory. Handles one file or a group of related files at a time.",
+      "mode": "subagent",
+      "prompt": "{file:./prompts/wiki-generator.txt}",
+      "tools": {
+        "read": true,
+        "write": true,
+        "edit": true,
+        "bash": false
+      }
+    },
+    "wiki-validator": {
+      "description": "Validates generated wiki pages for completeness, accuracy, and formatting. Compares wiki content against source code to ensure documentation is correct and up-to-date. Read-only access.",
+      "mode": "subagent",
+      "prompt": "{file:./prompts/wiki-validator.txt}",
+      "tools": {
+        "read": true,
+        "write": false,
+        "edit": false,
+        "bash": false
+      }
+    }
+  }
 }

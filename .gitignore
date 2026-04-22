@@ -5,4 +5,7 @@ dist/
 .env
 .env.local
 .memory/
+.trae/
+.opencode/
+
 *.tsbuildinfo

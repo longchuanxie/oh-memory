@@ -94,7 +94,7 @@ export class Logger {
    */
   static getInstance(): Logger {
     if (!Logger.instance) {
-      Logger.instance = new Logger('info', [new ConsoleTransport()])
+      Logger.instance = new Logger('info', [])
     }
     return Logger.instance
   }

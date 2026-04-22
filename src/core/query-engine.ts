@@ -1,112 +1,214 @@
-import type { KnowledgeGraph, KnowledgeNode } from '../types/index.js'
+import type { KnowledgeGraph, KnowledgeNode, KnowledgeEdge } from '../types/index.js'
 
-/**
- * 搜索结果
- */
 export interface SearchResult {
-  id: string
+  node: KnowledgeNode
   score: number
+  matchedFields: string[]
 }
 
-/**
- * 搜索选项
- */
 export interface SearchOptions {
-  type: 'entity' | 'concept' | 'source' | 'synthesis' | 'all'
+  type?: 'module' | 'concept' | 'config' | 'synthesis' | 'all'
   limit?: number
+  includeEdges?: boolean
 }
 
-/**
- * 查询引擎
- * 负责知识图谱的搜索和查询功能
- */
+export interface GraphTraversalResult {
+  node: KnowledgeNode
+  edges: KnowledgeEdge[]
+  neighbors: KnowledgeNode[]
+  depth: number
+}
+
+export interface QueryContext {
+  query: string
+  results: SearchResult[]
+  traversalPaths: GraphTraversalResult[]
+  summary: string
+}
+
 export class QueryEngine {
-  /**
-   * 对查询字符串进行分词
-   * @param query - 查询字符串
-   * @returns 分词结果数组
-   */
-  tokenizeQuery(query: string): string[] {
-    const lower = query.toLowerCase().trim()
+  search(graph: KnowledgeGraph, query: string, options: SearchOptions = {}): SearchResult[] {
+    if (!query?.trim()) return []
 
-    if (!lower) {
-      return []
-    }
+    const tokens = this.tokenize(query)
+    if (tokens.length === 0) return []
 
-    // 按空格分词，过滤空字符串
-    const tokens = lower.split(/\s+/).filter(token => token.length > 0)
-
-    return tokens
-  }
-
-  /**
-   * 搜索知识图谱节点
-   * @param graph - 知识图谱
-   * @param query - 查询字符串
-   * @param options - 搜索选项
-   * @returns 搜索结果数组，按相关性分数降序排列
-   */
-  search(graph: KnowledgeGraph, query: string, options: SearchOptions): SearchResult[] {
-    // 处理空查询
-    if (!query || query.trim().length === 0) {
-      return []
-    }
-
-    // 分词
-    const tokens = this.tokenizeQuery(query)
-
-    if (tokens.length === 0) {
-      return []
-    }
-
-    // 过滤节点
+    const typeFilter = options.type ?? 'all'
     let nodes = graph.nodes
 
-    // 类型过滤
-    if (options.type !== 'all') {
-      nodes = nodes.filter(node => node.type === options.type)
+    if (typeFilter !== 'all') {
+      nodes = nodes.filter(n => n.type === typeFilter)
     }
 
-    // 计算每个节点的匹配分数
-    const scoredNodes = nodes
-      .map(node => ({
-        id: node.id,
-        score: this.calculateMatchScore(node, tokens)
-      }))
-      .filter(result => result.score > 0)
+    const results = nodes
+      .map(node => this.scoreNode(node, tokens))
+      .filter((r): r is SearchResult => r !== null)
 
-    // 按分数降序排列
-    scoredNodes.sort((a, b) => b.score - a.score)
+    results.sort((a, b) => b.score - a.score)
 
-    // 应用limit
-    if (options.limit !== undefined && options.limit > 0) {
-      return scoredNodes.slice(0, options.limit)
-    }
-
-    return scoredNodes
+    return options.limit ? results.slice(0, options.limit) : results
   }
 
-  /**
-   * 计算节点与搜索词的匹配分数
-   * @param node - 知识节点
-   * @param searchTerms - 搜索词数组
-   * @returns 匹配分数
-   */
-  private calculateMatchScore(node: KnowledgeNode, searchTerms: string[]): number {
-    let score = 0
+  findById(graph: KnowledgeGraph, id: string): KnowledgeNode | undefined {
+    return graph.nodes.find(n => n.id === id)
+  }
 
-    for (const term of searchTerms) {
-      // 标题匹配（2分）
-      if (node.title.toLowerCase().includes(term)) {
-        score += 2
-      }
+  findByPath(graph: KnowledgeGraph, filePath: string): KnowledgeNode | undefined {
+    return graph.nodes.find(n =>
+      n.path === filePath || n.primarySource === filePath
+    )
+  }
 
-      // 标签匹配（1分）
-      if (node.tags.some(tag => tag.toLowerCase().includes(term))) {
-        score += 1
+  getNeighbors(graph: KnowledgeGraph, nodeId: string, depth: number = 1): GraphTraversalResult[] {
+    const results: GraphTraversalResult[] = []
+    const visited = new Set<string>()
+    const queue: Array<{ id: string; depth: number }> = [{ id: nodeId, depth: 0 }]
+
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      if (visited.has(current.id) || current.depth > depth) continue
+      visited.add(current.id)
+
+      const node = this.findById(graph, current.id)
+      if (!node) continue
+
+      const edges = graph.edges.filter(
+        e => e.from === current.id || e.to === current.id
+      )
+
+      const neighborIds = edges.map(e =>
+        e.from === current.id ? e.to : e.from
+      )
+
+      const neighbors = graph.nodes.filter(n => neighborIds.includes(n.id))
+
+      results.push({ node, edges, neighbors, depth: current.depth })
+
+      if (current.depth < depth) {
+        for (const neighborId of neighborIds) {
+          if (!visited.has(neighborId)) {
+            queue.push({ id: neighborId, depth: current.depth + 1 })
+          }
+        }
       }
     }
 
-    return score
+    return results
+  }
+
+  buildQueryContext(graph: KnowledgeGraph, query: string, options: SearchOptions = {}): QueryContext {
+    const results = this.search(graph, query, options)
+
+    const traversalPaths: GraphTraversalResult[] = []
+    const traversedIds = new Set<string>()
+
+    for (const result of results.slice(0, 5)) {
+      if (!traversedIds.has(result.node.id)) {
+        const traversal = this.getNeighbors(graph, result.node.id, 1)
+        traversalPaths.push(...traversal)
+        traversedIds.add(result.node.id)
+      }
+    }
+
+    const summary = this.buildSummary(results, traversalPaths)
+
+    return { query, results, traversalPaths, summary }
+  }
+
+  generateLLMQueryPrompt(context: QueryContext): string {
+    const parts: string[] = []
+
+    parts.push(`# Knowledge Base Query: "${context.query}"`)
+    parts.push('')
+    parts.push(`Found ${context.results.length} matching nodes.`)
+    parts.push('')
+
+    if (context.results.length > 0) {
+      parts.push('## Top Results')
+      for (const result of context.results.slice(0, 10)) {
+        const fields = result.matchedFields.join(', ')
+        parts.push(`- **${result.node.title}** (${result.node.type}) [score: ${result.score}, matched: ${fields}]`)
+        if (result.node.description) {
+          parts.push(`  ${result.node.description}`)
+        }
+        if (result.node.tags.length > 0) {
+          parts.push(`  Tags: ${result.node.tags.join(', ')}`)
+        }
+      }
+    }
+
+    if (context.traversalPaths.length > 0) {
+      parts.push('')
+      parts.push('## Related Nodes')
+      const seen = new Set<string>()
+      for (const traversal of context.traversalPaths) {
+        for (const neighbor of traversal.neighbors) {
+          if (!seen.has(neighbor.id)) {
+            seen.add(neighbor.id)
+            parts.push(`- **${neighbor.title}** (${neighbor.type}) → connected via ${traversal.edges.map(e => e.type).join(', ')}`)
+          }
+        }
+      }
+    }
+
+    return parts.join('\n')
+  }
+
+  private tokenize(query: string): string[] {
+    return query.toLowerCase().trim().split(/\s+/).filter(t => t.length > 0)
+  }
+
+  private scoreNode(node: KnowledgeNode, tokens: string[]): SearchResult | null {
+    let score = 0
+    const matchedFields: string[] = []
+
+    for (const token of tokens) {
+      if (node.title.toLowerCase().includes(token)) {
+        score += 3
+        matchedFields.push('title')
+      }
+
+      if (node.id.toLowerCase().includes(token)) {
+        score += 2
+        matchedFields.push('id')
+      }
+
+      if (node.tags.some(tag => tag.toLowerCase().includes(token))) {
+        score += 1.5
+        matchedFields.push('tags')
+      }
+
+      if (node.description?.toLowerCase().includes(token)) {
+        score += 1
+        matchedFields.push('description')
+      }
+
+      if (node.path.toLowerCase().includes(token)) {
+        score += 0.5
+        matchedFields.push('path')
+      }
+    }
+
+    if (score === 0) return null
+
+    return {
+      node,
+      score,
+      matchedFields: [...new Set(matchedFields)],
+    }
+  }
+
+  private buildSummary(
+    results: SearchResult[],
+    traversals: GraphTraversalResult[]
+  ): string {
+    if (results.length === 0) return 'No matching results found.'
+
+    const topResult = results[0]
+    const neighborCount = traversals.reduce(
+      (sum, t) => sum + t.neighbors.length, 0
+    )
+
+    return `Top match: "${topResult.node.title}" (score: ${topResult.score}). ${results.length} results, ${neighborCount} related nodes.`
   }
 }
