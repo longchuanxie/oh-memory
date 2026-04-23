@@ -1,313 +1,153 @@
-# Oh-Memory
+# oh-mermory
 
-LLM-powered knowledge base plugin for OpenCode, based on the llm-wiki design philosophy.
+LLM-powered personal knowledge base with incremental wiki building.
 
-## Overview
+Instead of traditional RAG (retrieve-then-generate), oh-mermory incrementally builds and maintains a persistent, compounding wiki. The LLM writes and maintains the wiki; you curate sources and ask questions.
 
-Oh-Memory transforms your project's code and documentation into a structured, interlinked knowledge base that grows and evolves with your project. It provides intelligent knowledge management capabilities through automatic ingestion, validation, and evolution.
+## Core Idea
 
-## Features
+Most LLM knowledge tools use RAG: upload files, retrieve chunks at query time, generate answers. Nothing compounds. Every question starts from scratch.
 
-- **Automatic Knowledge Ingestion**: Transform source files into structured wiki pages
-- **Graph-Based Navigation**: Visualize knowledge connections with interactive graphs
-- **Intelligent Querying**: Natural language queries across your knowledge base
-- **Auto-Evolution**: Monitor file changes and automatically update knowledge
-- **Multi-Layer Validation**: Format, link, and content validation with auto-fix
-- **Human-Friendly Review**: Visual diff and approval workflow
-- **Easy Setup**: One-command initialization with `oh-memory init`
+oh-mermory is different. The LLM **incrementally builds a persistent wiki** — a structured, interlinked collection of markdown files. When you add a source, the LLM reads it, extracts key information, and integrates it into the existing wiki — updating entity pages, revising summaries, flagging contradictions. Knowledge is compiled once and kept current, not re-derived on every query.
 
-## Installation
-
-### From NPM
-
-```bash
-npm install oh-memory
-```
-
-### Quick Start
-
-Get started in 3 simple steps:
-
-#### Step 1: Install
-
-```bash
-# Navigate to your project directory
-cd your-project
-
-# Install oh-memory
-npm install oh-memory
-```
-
-#### Step 2: Initialize
-
-```bash
-# Initialize oh-memory (creates commands and configuration)
-npx oh-memory init
-```
-
-This will:
-- ✅ Create `.opencode/commands/` directory with all memory-* commands
-- ✅ Create or update `opencode.json` with the plugin configuration
-- ✅ Add `.memory/` to `.gitignore`
-
-#### Step 3: Build Your Knowledge Base
-
-```bash
-# Initialize the knowledge base structure
-/memory-init
-
-# Ingest your source files
-/memory-ingest src/
-
-# Query your knowledge base
-/memory-query How does the authentication system work?
-```
-
-### That's it! 🎉
-
-Your knowledge base is now ready. The `.memory/` directory contains:
-- Structured wiki pages for your code
-- Interactive knowledge graph (`.memory/graph.html`)
-- Searchable index for queries
-
-### Manual Configuration (Alternative)
-
-If you prefer manual setup:
-
-1. Add to your `opencode.json`:
-
-```json
-{
-  "plugin": ["oh-memory"]
-}
-```
-
-2. Restart OpenCode - the plugin will automatically create the command files.
-
-## Commands
-
-After installation, the following commands will be available in OpenCode:
-
-### `/memory-init`
-
-Initialize the knowledge base for your project.
-
-```bash
-/memory-init
-```
-
-This creates the `.memory/` directory structure with:
-- `entities/` - Code entities (modules, functions, classes)
-- `concepts/` - Architectural concepts and patterns
-- `sources/` - Source document summaries
-- `synthesis/` - Cross-cutting analyses
-- `index.md` - Knowledge base index
-- `log.md` - Operation log
-- `SCHEMA.md` - Configuration schema
-- `graph.json` - Graph index
-- `graph.html` - Visual graph
-
-### `/memory-ingest`
-
-Ingest source files into the knowledge base.
-
-```bash
-/memory-ingest src/
-/memory-ingest README.md
-/memory-ingest docs/
-```
-
-**Git Version Control (IMPORTANT)**:
-- By default, only files tracked by git are processed
-- Untracked files are automatically skipped for security
-- To include untracked files, use `includeUntracked: true` option
-- This prevents accidental ingestion of sensitive or temporary files
-
-**Smart Filtering**: The command automatically filters out:
-- Compiled files (`.class`, `.jar`, `.pyc`, `.exe`, `.dll`, etc.)
-- Dependencies (`node_modules/`, `vendor/`, `Pods/`, etc.)
-- Build outputs (`dist/`, `build/`, `target/`, `out/`, etc.)
-- Lock files (`package-lock.json`, `yarn.lock`, etc.)
-- Environment files (`.env`, `.env.local`, etc.)
-- Minified files (`.min.js`, `.min.css`, etc.)
-
-See [FILTER_RULES.md](FILTER_RULES.md) for complete filtering rules.
-See [GIT_INTEGRATION.md](GIT_INTEGRATION.md) for Git version control details.
-
-### `/memory-query`
-
-Query the knowledge base with natural language.
-
-```bash
-/memory-query How does authentication work?
-/memory-query What are the main components?
-```
-
-### `/memory-lint`
-
-Validate and repair the knowledge base.
-
-```bash
-/memory-lint
-/memory-lint --auto-fix
-```
+**The wiki is a persistent, compounding artifact.** Cross-references are already there. Contradictions are already flagged. The synthesis reflects everything you've read. It keeps getting richer with every source and every question.
 
 ## Architecture
 
-Oh-Memory follows a three-layer architecture:
+Three layers:
 
-1. **Project Files** - Your existing code and documentation (read-only)
-2. **Knowledge Wiki** - LLM-generated structured knowledge (`.memory/`)
-3. **Schema** - Configuration and conventions (`.memory/SCHEMA.md`)
-
-## Graph Index
-
-The plugin uses Markdown double-bracket links for knowledge graph construction:
-
-- `[[page-name]]` - Link to another page
-- `[[page-name|display text]]` - Link with custom text
-
-The graph is automatically built and can be visualized in `.memory/graph.html`.
-
-## Auto-Evolution
-
-Oh-Memory can automatically monitor your project files and update the knowledge base:
-
-```json
-{
-  "autoEvolution": {
-    "enabled": true,
-    "watchPatterns": ["src/**/*.ts", "docs/**/*.md"],
-    "ignorePatterns": ["**/*.test.ts", "**/node_modules/**"],
-    "updateThreshold": 10,
-    "requireApproval": true
-  }
-}
+```
+┌─────────────────────────────────────────┐
+│           Schema Layer (AGENTS.md)       │
+│  Defines how the LLM operates on the wiki│
+├─────────────────────────────────────────┤
+│           Wiki Layer (Markdown)          │
+│  LLM-generated, interlinked pages       │
+│  Summaries, entities, concepts, etc.    │
+├─────────────────────────────────────────┤
+│           Raw Sources Layer              │
+│  Immutable source documents             │
+│  Articles, papers, data files           │
+└─────────────────────────────────────────┘
 ```
 
-## Validation
+- **Raw Sources** — Your curated collection. Immutable. Source of truth.
+- **Wiki** — LLM-generated markdown files. Summaries, entity pages, concept pages, comparisons. The LLM owns this layer.
+- **Schema** — `AGENTS.md` tells the LLM how the wiki is structured and what workflows to follow.
 
-The plugin provides multi-layer validation:
+## Operations
 
-1. **Format Validation** - JSON Schema for frontmatter
-2. **Link Validation** - Broken links and orphan pages
-3. **Content Validation** - Contradictions and inconsistencies
-4. **Human Review** - Approval workflow for LLM-generated content
+**Ingest** — Drop a source, tell the LLM to process it. The LLM reads the source, discusses key takeaways, writes a summary page, updates the index, updates relevant entity/concept pages, and appends to the log.
 
-## Usage Workflow
+**Query** — Ask questions against the wiki. The LLM searches for relevant pages, reads them, and synthesizes an answer with citations. Good answers can be filed back into the wiki as new pages — your explorations compound.
 
-### Typical Workflow
+**Lint** — Periodically health-check the wiki: find contradictions, stale claims, orphan pages, missing cross-references. The LLM suggests new questions and sources.
+
+## Project Context Protocol (PCP)
+
+oh-mermory uses PCP for cross-session AI context persistence. Any AI coding tool (OpenCode, Claude Code, Cursor, Trae) can pick up where the last session left off.
+
+### Quick Start
 
 ```bash
-# 1. Initialize the knowledge base (first time only)
-/memory-init
+# Initialize PCP in any project
+npx pcp init
 
-# 2. Ingest your source files
-/memory-ingest src/
-/memory-ingest docs/
-
-# 3. Query the knowledge base
-/memory-query How does the authentication system work?
-
-# 4. Validate and repair (optional)
-/memory-lint --auto-fix
+# Or use standalone scripts (no Node.js required)
+curl -sL <url> | bash     # Bash
+iwr <url> | iex           # PowerShell
 ```
 
-### Tips
+### PCP Features
 
-- **Incremental Updates**: Re-run `/memory-ingest` when you add new files
-- **Git Integration**: Only git-tracked files are processed by default
-- **Auto-Evolution**: Enable in config to auto-update on file changes
-- **Visual Graph**: Open `.memory/graph.html` to explore connections
+- **Three-layer memory model**: L1 (Project Cognition) → L2 (Session State) → L3 (Project Knowledge)
+- **Session lifecycle**: TEMP (24h) → WORKING (7d) → ARCHIVED (long-term)
+- **Checkpoint recovery**: Detect abnormal termination, present 4 recovery options
+- **Channel mechanism**: Context isolated by git branch
+- **MCP extension**: Optional bridge for external memory systems
 
-## Development
+### Supported AI Tools
 
-### Build
+| Tool | Mechanism |
+|------|-----------|
+| **OpenCode** | `opencode.json` instructions + `@` references in AGENTS.md |
+| **Claude Code** | Reads AGENTS.md automatically |
+| **Trae** | Reads AGENTS.md + Trae Skills |
+| **Cursor** | Reads AGENTS.md automatically |
+
+### Supported Project Types
+
+| Language | Detection File | Tech Stack Tag |
+|----------|---------------|----------------|
+| Node.js | `package.json` | Node.js + top deps |
+| Python | `pyproject.toml` | Python |
+| Rust | `Cargo.toml` | Rust |
+| Go | `go.mod` | Go |
+| Java (Maven) | `pom.xml` | Java, Maven |
+| Java (Gradle) | `build.gradle` / `build.gradle.kts` | Java, Gradle |
+
+### CLI Commands
 
 ```bash
-npm run build
+npx pcp init              # Initialize PCP (auto-detect project type)
+npx pcp init -i           # Interactive mode
+npx pcp init --dry-run    # Preview without writing
+npx pcp status            # Check context status
+npx pcp cleanup           # Clean up old session files
+npx pcp recovery          # Check for interrupted sessions
+npx pcp export            # Export context to archive
+npx pcp import <archive>  # Import context from archive
 ```
 
-### Development Mode
+## Directory Structure
 
-```bash
-npm run dev
+```
+oh-mermory/
+├── .ai-context/              # PCP context files
+│   ├── BOOT.md               # Session entry point (always load first)
+│   ├── PROJECT.md            # Project overview
+│   ├── ARCHITECTURE.md       # System architecture
+│   ├── DECISIONS.md          # Decision records (ADR)
+│   ├── PATTERNS.md           # Code patterns & conventions
+│   ├── WORKING.md            # Current work state
+│   ├── CHECKPOINT.md         # Session checkpoint (JSON)
+│   ├── GLOSSARY.md           # Term glossary
+│   ├── SESSIONS/             # Session lifecycle storage
+│   │   ├── INDEX.md          # Session index
+│   │   ├── WORKING/          # Active sessions
+│   │   ├── ARCHIVED/         # Compressed past sessions
+│   │   └── TEMP/             # Ephemeral files (24h TTL)
+│   ├── KNOWLEDGE/            # Persistent knowledge
+│   │   ├── domain/           # Domain-specific
+│   │   └── tech/             # Technical
+│   └── scripts/              # Automation scripts
+├── docs/
+│   └── llm_wiki.md           # LLM Wiki concept document
+├── src/                      # pcp-cli source code
+│   ├── cli.ts                # CLI entry point
+│   ├── commands/             # CLI command implementations
+│   ├── scanner.ts            # Project type scanner
+│   ├── renderer.ts           # Template rendering engine
+│   ├── templates/            # Parameterized templates
+│   └── standalone/           # Standalone init scripts
+├── AGENTS.md                 # AI agent instructions
+└── opencode.json             # OpenCode configuration
 ```
 
-### Publish
+## Tips
 
-```bash
-# Publish beta version
-npm run publish:beta
+- **Obsidian** is the best viewer for the wiki — graph view, backlinks, search
+- **Obsidian Web Clipper** converts web articles to markdown for quick ingestion
+- **Marp** generates slide decks from wiki content
+- **qmd** adds hybrid BM25/vector search at scale
+- The wiki is just a git repo of markdown files — version history, branching, and collaboration for free
 
-# Publish stable version
-npm run publish:stable
-```
+## Why This Works
 
-## Troubleshooting
+The tedious part of maintaining a knowledge base is the bookkeeping — updating cross-references, keeping summaries current, noting contradictions. Humans abandon wikis because maintenance grows faster than value. LLMs don't get bored, can touch 15 files in one pass, and the cost of maintenance is near zero.
 
-### Commands not showing up?
-
-1. Make sure the plugin is installed: `npm list oh-memory`
-2. Check `opencode.json` includes the plugin
-3. Restart OpenCode
-4. Check if `.opencode/commands/` directory exists with the command files
-5. Try running `npx oh-memory init` to manually initialize
-
-### Plugin not loading?
-
-1. Check the plugin is correctly listed in `opencode.json`
-2. Verify npm package is installed
-3. Check OpenCode logs for errors
-
-### Knowledge base not initializing?
-
-1. Ensure you have write permissions in the project directory
-2. Check if `.memory/` directory already exists
-3. Try removing `.memory/` and running `/memory-init` again
-
-### CLI command not found?
-
-1. Make sure you're in a project directory
-2. Try using `npx oh-memory init`
-3. Check if the package is installed globally or locally
-
-## Changelog
-
-### v1.0.0-beta.6 (2026-04-19)
-- 🏗️ **Architecture**: Major refactoring with extracted components
-  - GraphBuilder, IndexManager, QueryEngine for graph operations
-  - ContentExtractor, ContentSearcher for content analysis
-  - DocGenerator for documentation generation
-  - PageProcessor for file processing
-  - CacheCoordinator for cache management
-  - GraphIndexBuilder for graph index building
-- 🧪 **Testing**: Test coverage increased from ~10% to >70% (582 tests)
-- 📝 **Logging**: Structured logging system with multiple log levels
-- 🔧 **Config**: Unified configuration management system
-- 🛡️ **Error Handling**: Unified error handling with severity levels
-- 🔒 **Type Safety**: Eliminated all `any` types in core modules
-
-### v1.0.0-beta.3 (2026-04-18)
-- 🐛 **Fixed**: Entity path spelling error (`entitys` → `entities`)
-- 🔒 **Security**: Git version control integration (only track tracked files by default)
-- 🚫 **Filtering**: Smart file filtering (exclude compiled files, dependencies, etc.)
-- 🛠️ **CLI**: Added `oh-memory init` command for easy setup
-
-### v1.0.0-beta.2 (2026-04-18)
-- ✨ Initial beta release
-- 📚 Knowledge base management
-- 🔍 Query and search functionality
-- ✅ Validation and auto-fix
+Your job: curate sources, direct analysis, ask good questions. The LLM does everything else.
 
 ## License
 
 MIT
-
-## Contributing
-
-Contributions are welcome! Please read our contributing guidelines before submitting PRs.
-
-## Credits
-
-Based on the [llm-wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) design philosophy by Andrej Karpathy.

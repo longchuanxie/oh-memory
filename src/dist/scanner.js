@@ -1,0 +1,215 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.scanProject = scanProject;
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
+function scanProject(projectDir) {
+    const date = new Date().toISOString().split("T")[0];
+    const info = {
+        projectName: path.basename(projectDir),
+        projectPurpose: "",
+        techStack: "",
+        currentPhase: "development",
+        branch: "main",
+        directoryStructure: scanDirectoryStructure(projectDir),
+        date,
+        hasAgentsMd: fs.existsSync(path.join(projectDir, "AGENTS.md")),
+        hasGitignore: fs.existsSync(path.join(projectDir, ".gitignore")),
+    };
+    scanPackageJson(projectDir, info);
+    scanPyprojectToml(projectDir, info);
+    scanCargoToml(projectDir, info);
+    scanGoMod(projectDir, info);
+    scanPomXml(projectDir, info);
+    scanBuildGradle(projectDir, info);
+    scanGitInfo(projectDir, info);
+    return info;
+}
+function scanPackageJson(projectDir, info) {
+    const filePath = path.join(projectDir, "package.json");
+    if (!fs.existsSync(filePath))
+        return;
+    try {
+        const pkg = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+        if (pkg.name && info.projectName === path.basename(projectDir)) {
+            info.projectName = pkg.name;
+        }
+        if (pkg.description) {
+            info.projectPurpose = pkg.description;
+        }
+        const deps = [];
+        if (pkg.dependencies)
+            deps.push(...Object.keys(pkg.dependencies));
+        if (pkg.devDependencies)
+            deps.push(...Object.keys(pkg.devDependencies));
+        if (deps.length > 0) {
+            const existing = info.techStack ? info.techStack.split(", ") : [];
+            const merged = [...new Set([...existing, "Node.js", ...deps.slice(0, 5)])];
+            info.techStack = merged.join(", ");
+        }
+        else {
+            info.techStack = info.techStack ? `${info.techStack}, Node.js` : "Node.js";
+        }
+    }
+    catch {
+        // ignore parse errors
+    }
+}
+function scanPyprojectToml(projectDir, info) {
+    const filePath = path.join(projectDir, "pyproject.toml");
+    if (!fs.existsSync(filePath))
+        return;
+    const content = fs.readFileSync(filePath, "utf-8");
+    const nameMatch = content.match(/^name\s*=\s*"([^"]+)"/m);
+    if (nameMatch)
+        info.projectName = nameMatch[1];
+    const descMatch = content.match(/^description\s*=\s*"([^"]+)"/m);
+    if (descMatch)
+        info.projectPurpose = descMatch[1];
+    const existing = info.techStack ? info.techStack.split(", ") : [];
+    const merged = [...new Set([...existing, "Python"])];
+    info.techStack = merged.join(", ");
+}
+function scanCargoToml(projectDir, info) {
+    const filePath = path.join(projectDir, "Cargo.toml");
+    if (!fs.existsSync(filePath))
+        return;
+    const content = fs.readFileSync(filePath, "utf-8");
+    const nameMatch = content.match(/^name\s*=\s*"([^"]+)"/m);
+    if (nameMatch)
+        info.projectName = nameMatch[1];
+    const existing = info.techStack ? info.techStack.split(", ") : [];
+    const merged = [...new Set([...existing, "Rust"])];
+    info.techStack = merged.join(", ");
+}
+function scanGoMod(projectDir, info) {
+    const filePath = path.join(projectDir, "go.mod");
+    if (!fs.existsSync(filePath))
+        return;
+    const content = fs.readFileSync(filePath, "utf-8");
+    const moduleMatch = content.match(/^module\s+(\S+)/m);
+    if (moduleMatch) {
+        const modPath = moduleMatch[1];
+        info.projectName = modPath.split("/").pop() || info.projectName;
+    }
+    const existing = info.techStack ? info.techStack.split(", ") : [];
+    const merged = [...new Set([...existing, "Go"])];
+    info.techStack = merged.join(", ");
+}
+function scanPomXml(projectDir, info) {
+    const filePath = path.join(projectDir, "pom.xml");
+    if (!fs.existsSync(filePath))
+        return;
+    const content = fs.readFileSync(filePath, "utf-8");
+    const nameMatch = content.match(/<name>([^<]+)<\/name>/);
+    if (nameMatch)
+        info.projectName = nameMatch[1].trim();
+    const descMatch = content.match(/<description>([^<]+)<\/description>/);
+    if (descMatch)
+        info.projectPurpose = descMatch[1].trim();
+    const groupIdMatch = content.match(/<groupId>([^<]+)<\/groupId>/);
+    const artifactIdMatch = content.match(/<artifactId>([^<]+)<\/artifactId>/);
+    if (!nameMatch && artifactIdMatch) {
+        info.projectName = artifactIdMatch[1].trim();
+    }
+    const existing = info.techStack ? info.techStack.split(", ") : [];
+    const merged = [...new Set([...existing, "Java", "Maven"])];
+    info.techStack = merged.join(", ");
+}
+function scanBuildGradle(projectDir, info) {
+    const ktsPath = path.join(projectDir, "build.gradle.kts");
+    const groovyPath = path.join(projectDir, "build.gradle");
+    const filePath = fs.existsSync(ktsPath) ? ktsPath : groovyPath;
+    if (!fs.existsSync(filePath))
+        return;
+    const content = fs.readFileSync(filePath, "utf-8");
+    const rootProjectMatch = content.match(/rootProject\.name\s*=\s*["']([^"']+)["']/);
+    if (rootProjectMatch) {
+        info.projectName = rootProjectMatch[1];
+    }
+    const groupMatch = content.match(/^group\s*=\s*["']([^"']+)["']/m);
+    const existing = info.techStack ? info.techStack.split(", ") : [];
+    const isKts = filePath.endsWith(".kts");
+    const merged = [...new Set([...existing, "Java", isKts ? "Gradle (Kotlin DSL)" : "Gradle"])];
+    info.techStack = merged.join(", ");
+}
+function scanGitInfo(projectDir, info) {
+    try {
+        const { execSync } = require("child_process");
+        const branch = execSync("git branch --show-current", { cwd: projectDir, encoding: "utf-8" }).trim();
+        if (branch)
+            info.branch = branch;
+    }
+    catch {
+        // not a git repo or git not available
+    }
+}
+function scanDirectoryStructure(projectDir) {
+    const entries = [];
+    try {
+        const topItems = fs.readdirSync(projectDir, { withFileTypes: true });
+        for (const item of topItems) {
+            if (item.name.startsWith(".") && item.name !== ".github")
+                continue;
+            if (item.name === "node_modules" || item.name === "dist" || item.name === "build")
+                continue;
+            if (item.isDirectory()) {
+                entries.push(`${item.name}/`);
+                try {
+                    const subItems = fs.readdirSync(path.join(projectDir, item.name), { withFileTypes: true });
+                    for (const sub of subItems.slice(0, 5)) {
+                        if (sub.name.startsWith("."))
+                            continue;
+                        entries.push(`  ${sub.isDirectory() ? `${sub.name}/` : sub.name}`);
+                    }
+                    if (subItems.length > 5)
+                        entries.push("  ...");
+                }
+                catch {
+                    // permission denied, skip
+                }
+            }
+            else {
+                entries.push(item.name);
+            }
+        }
+    }
+    catch {
+        // permission denied, return empty
+    }
+    return entries.join("\n");
+}
+//# sourceMappingURL=scanner.js.map

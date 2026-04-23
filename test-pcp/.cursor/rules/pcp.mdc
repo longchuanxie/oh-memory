@@ -1,0 +1,34 @@
+---
+description: PCP Context Protocol for test-pcp
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Project Context Protocol (PCP)
+
+This project uses PCP for cross-session AI context persistence.
+
+## Context Files
+
+Load these files based on task type:
+
+| Task Type | Files to Load |
+|-----------|---------------|
+| Implement | `.ai-context/PATTERNS.md` + `.ai-context/ARCHITECTURE.md` |
+| Fix Bug | `.ai-context/WORKING.md` + `.ai-context/DECISIONS.md` |
+| Refactor | `.ai-context/ARCHITECTURE.md` + `.ai-context/PATTERNS.md` |
+| History | `.ai-context/SESSIONS/INDEX.md` |
+
+## Session Rules
+
+- **ALWAYS** read `.ai-context/BOOT.md` first
+- Update `.ai-context/CHECKPOINT.md` after each subtask
+- Record decisions in `.ai-context/DECISIONS.md`
+- Keep `.ai-context/BOOT.md` under 500 tokens
+
+## Project Info
+
+- **Name**: test-pcp
+- **Purpose**: A software project
+- **Tech Stack**: Not detected
+- **Phase**: development
