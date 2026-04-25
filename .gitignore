@@ -6,3 +6,5 @@
 
 # Checkpoint temp file (atomic write)
 .ai-context/CHECKPOINT.md.tmp
+.trae
+openspec

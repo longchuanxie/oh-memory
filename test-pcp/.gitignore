@@ -1,8 +1,0 @@
-# AI Context — Temporary files (ephemeral, 24h TTL)
-.ai-context/SESSIONS/TEMP/
-
-# Recovery reports (generated on demand)
-.ai-context/RECOVERY.md
-
-# Checkpoint temp file (atomic write)
-.ai-context/CHECKPOINT.md.tmp

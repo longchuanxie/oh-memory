@@ -48,8 +48,9 @@ const FILES = [
     { templatePath: "DECISIONS.md", outputPath: ".ai-context/DECISIONS.md" },
     { templatePath: "PATTERNS.md", outputPath: ".ai-context/PATTERNS.md" },
     { templatePath: "WORKING.md", outputPath: ".ai-context/WORKING.md" },
-    { templatePath: "CHECKPOINT.md", outputPath: ".ai-context/CHECKPOINT.md" },
+    { templatePath: "CHECKPOINT.json", outputPath: ".ai-context/CHECKPOINT.json" },
     { templatePath: "GLOSSARY.md", outputPath: ".ai-context/GLOSSARY.md" },
+    { templatePath: "PCP.md", outputPath: ".ai-context/PCP.md" },
     { templatePath: "SESSIONS_INDEX.md", outputPath: ".ai-context/SESSIONS/INDEX.md" },
     { templatePath: "BRANCH_NAMING.md", outputPath: ".ai-context/BRANCH_NAMING.md" },
     { templatePath: "mcp-bridge.json", outputPath: ".ai-context/mcp-bridge.json" },
@@ -326,7 +327,21 @@ async function initCommand(flags, _positional) {
         createdFiles.push("AGENTS.md");
     }
     else {
-        skippedFiles.push("AGENTS.md (already exists)");
+        // AGENTS.md exists, append PCP reference instead of overwriting
+        const existingAgents = fs.readFileSync(path.join(projectDir, "AGENTS.md"), "utf-8");
+        const pcpReference = "\n\n## Project Context Protocol (PCP)\n\nSee `.ai-context/PCP.md` for PCP instructions.\n";
+        if (!existingAgents.includes(".ai-context/PCP.md") && !existingAgents.includes("Project Context Protocol")) {
+            if (dryRun) {
+                console.log(`  [append] AGENTS.md (adding PCP reference)`);
+            }
+            else {
+                fs.appendFileSync(path.join(projectDir, "AGENTS.md"), pcpReference, "utf-8");
+            }
+            createdFiles.push("AGENTS.md (appended PCP reference)");
+        }
+        else {
+            skippedFiles.push("AGENTS.md (already has PCP reference)");
+        }
     }
     if (!projectInfo.hasGitignore || force) {
         const gitignoreTemplate = readTemplate(templateDir, "gitignore");

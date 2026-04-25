@@ -4,13 +4,17 @@ import { cleanupCommand } from "./cleanup";
 import { recoveryCommand } from "./recovery";
 import { exportCommand } from "./export";
 import { importCommand } from "./import-cmd";
+import { checkpointCommand } from "./checkpoint";
+import { sessionCommand } from "./session";
+import { updateCommand } from "./update";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
-function parseArgs(args: string[]): { command: string; flags: Record<string, string | boolean>; positional: string[] } {
+function parseArgs(args: string[]): { command: string; subcommand: string; flags: Record<string, string | boolean>; positional: string[] } {
   const flags: Record<string, string | boolean> = {};
   const positional: string[] = [];
   let command = "";
+  let subcommand = "";
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -26,6 +30,10 @@ function parseArgs(args: string[]): { command: string; flags: Record<string, str
       flags.yes = true;
     } else if (arg === "--force" || arg === "-f") {
       flags.force = true;
+    } else if (arg === "--json") {
+      flags.json = true;
+    } else if (arg === "--archived" || arg === "--all") {
+      flags[arg.slice(2)] = true;
     } else if (arg.startsWith("--")) {
       const key = arg.slice(2);
       if (i + 1 < args.length && !args[i + 1].startsWith("-")) {
@@ -35,12 +43,14 @@ function parseArgs(args: string[]): { command: string; flags: Record<string, str
       }
     } else if (!command) {
       command = arg;
+    } else if (!subcommand && command === "session") {
+      subcommand = arg;
     } else {
       positional.push(arg);
     }
   }
 
-  return { command, flags, positional };
+  return { command, subcommand, flags, positional };
 }
 
 function showHelp(): void {
@@ -53,10 +63,20 @@ Usage: pcp <command> [options]
 Commands:
   init        Initialize PCP in the current project
   status      Show PCP context status
-  cleanup     Clean up old session files
+  update      Re-scan project and update context files
+  session     Manage AI coding sessions (start/end/list/search/archive)
+  checkpoint  Save current progress checkpoint
   recovery    Check for abnormal session termination
+  cleanup     Clean up old session files
   export      Export context to archive
   import      Import context from archive
+
+Session Subcommands:
+  start <topic>     Start a new session
+  end [session-id]  End an active session
+  list              List active sessions
+  search <query>    Search sessions by keyword
+  archive <id>      Archive a completed session
 
 Options:
   -h, --help       Show this help message
@@ -69,19 +89,51 @@ Init Options:
                        Supported: opencode, cursor, windsurf, trae, claude-code, copilot
   -f, --force          Overwrite existing files
 
+Session Options:
+  --topic <topic>   Session topic (for start)
+  --goal <goal>     Session goal (for start)
+  --session <id>    Session ID (for end/archive)
+  --archived        Include archived sessions in list
+  --all             Include archived sessions in list
+
+Recovery Options:
+  --json            Output recovery status as JSON
+
+Update Options:
+      --dry-run        Preview changes without writing files
+
+Checkpoint Options:
+  --session <id>    Session ID
+  --status <s>      Set checkpoint status
+  --phase <p>       Set current phase
+  --goal <g>        Set goal
+  --completed <items>  Comma-separated completed items
+  --inProgress <item>  Current in-progress item
+  --remaining <items>  Comma-separated remaining items
+  --created <files>    Comma-separated created files
+  --modified <files>   Comma-separated modified files
+  --channel <ch>    Set channel
+
 Examples:
-  npx pcp init                     # Auto-detect and initialize
-  npx pcp init -i                  # Interactive mode with AI tool selection
-  npx pcp init --ide opencode      # Configure OpenCode only
-  npx pcp init --ide cursor,trae   # Configure Cursor and Trae
-  npx pcp init --dry-run           # Preview what would be created
-  npx pcp status                   # Check context status
+  npx pcp init                          # Auto-detect and initialize
+  npx pcp init -i                       # Interactive mode
+  npx pcp init --ide cursor,trae        # Configure specific tools
+  npx pcp status                        # Check context status
+  npx pcp update                        # Re-scan and update context
+  npx pcp session start feature-auth    # Start a new session
+  npx pcp session end                   # End current session
+  npx pcp session list                  # List active sessions
+  npx pcp session search "auth"         # Search sessions
+  npx pcp session archive 2026-04-25-feature-auth
+  npx pcp checkpoint --completed "step1,step2"
+  npx pcp recovery                      # Check for stale sessions
+  npx pcp recovery --json               # Machine-readable output
 `);
 }
 
 export async function run(): Promise<void> {
   const args = process.argv.slice(2);
-  const { command, flags, positional } = parseArgs(args);
+  const { command, subcommand, flags, positional } = parseArgs(args);
 
   if (flags.version) {
     console.log(`pcp v${VERSION}`);
@@ -93,13 +145,21 @@ export async function run(): Promise<void> {
     return;
   }
 
+  if (command === "session") {
+    const sessionPositional = subcommand ? [subcommand, ...positional] : positional;
+    await sessionCommand(flags, sessionPositional);
+    return;
+  }
+
   const commandMap: Record<string, (flags: Record<string, string | boolean>, positional: string[]) => Promise<void>> = {
     init: initCommand,
     status: statusCommand,
+    update: updateCommand,
     cleanup: cleanupCommand,
     recovery: recoveryCommand,
     export: exportCommand,
     import: importCommand,
+    checkpoint: checkpointCommand,
   };
 
   const handler = commandMap[command];

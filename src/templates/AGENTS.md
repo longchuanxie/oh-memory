@@ -16,10 +16,10 @@ OpenCode reads this file automatically. For on-demand context loading, use `@` r
 - Decisions: @.ai-context/DECISIONS.md
 - Glossary: @.ai-context/GLOSSARY.md
 
-Load these files lazily based on the task type (see Section 1.3). Do NOT load all at once.
+Load these files lazily based on the task type (see Section 1.4). Do NOT load all at once.
 
 ### Claude Code / Trae / Cursor
-These tools read this file automatically. Use the Read tool to load context files on demand per Section 1.3.
+These tools read this file automatically. Use the Read tool to load context files on demand per Section 1.4.
 
 ---
 
@@ -29,9 +29,25 @@ These tools read this file automatically. Use the Read tool to load context file
 **ALWAYS** read `.ai-context/BOOT.md` before any other file. It contains the project snapshot and context map.
 
 ### 1.2 Check for Recovery
-Read `.ai-context/CHECKPOINT.md`. If `status` is `"in-progress"` and `lastUpdate` is older than 2 hours, an abnormal termination likely occurred. Follow the Recovery procedure in Section 4.
+Run `pcp recovery --json` to check for stale sessions. If `isStale: true`, present recovery options to the user:
+1. **Continue** — Resume from checkpoint state
+2. **Review** — Show git diff before deciding
+3. **Discard** — Revert uncommitted changes (`git checkout . && git clean -fd`)
+4. **New Task** — Stash changes (`git stash`) and start fresh
 
-### 1.3 Load Context by Task Type
+### 1.3 Start New Session
+**ALWAYS** start a session at the beginning of work:
+
+```bash
+pcp session start <topic> --goal "<goal description>"
+```
+
+This automatically:
+- Creates session file in `.ai-context/SESSIONS/WORKING/`
+- Updates `SESSIONS/INDEX.md`
+- Updates `CHECKPOINT.json`
+
+### 1.4 Load Context by Task Type
 Based on the user's request, load additional context files:
 
 | Task Type | Keywords | Files to Load |
@@ -47,77 +63,132 @@ For tasks not matching any type, load only `WORKING.md` for current state.
 
 ## 2. During Work: Context Maintenance
 
-### 2.1 Update CHECKPOINT.md After Each Subtask
-After completing a logical subtask:
-- Move the item from `inProgress` to `completed` in the progress section
-- Add new files to `created` or `modified` lists
-- Update `lastUpdate` timestamp
-- Write to `CHECKPOINT.md.tmp` first, then rename to `CHECKPOINT.md` (atomic write)
+### 2.1 Update Checkpoint After Each Subtask
+**ALWAYS** run after completing a logical subtask:
+
+```bash
+pcp checkpoint --completed "item1,item2" --inProgress "current item" --remaining "item3,item4"
+```
+
+Or to update created/modified files:
+
+```bash
+pcp checkpoint --created "new-file.ts" --modified "existing-file.ts"
+```
 
 ### 2.2 Record Decisions in DECISIONS.md
-When making a design decision:
-- Add a new ADR entry with format: `D###: Title`, Status, Date, Context, Decision, Consequences
-- Number sequentially
+When making a design decision, add an ADR entry to `.ai-context/DECISIONS.md`:
 
-### 2.3 Update Session File
-When making code changes:
-- Add entries to the `Changes` section
-- Add insights to the `Insights` section
-- Place debug details in `Detailed Log (Ephemeral)` section
+```markdown
+### D###: [Title]
+- **Status**: Proposed | Accepted | Deprecated | Superseded
+- **Date**: YYYY-MM-DD
+- **Context**: Why this decision was needed
+- **Decision**: What was decided
+- **Consequences**: Impact of this decision
+```
 
-### 2.4 Update WORKING.md
-When the current task or progress changes:
-- Update `Current Task`, `Progress`, `Next Steps`, and `Known Issues`
+Number sequentially (check existing entries for next number).
+
+### 2.3 Update WORKING.md
+When the current task or progress changes significantly, update `.ai-context/WORKING.md`:
+- Update `Current Task`
+- Update `Progress` checklist
+- Update `Next Steps`
+- Add any `Known Issues`
 
 ---
 
 ## 3. Post-Work: Session Completion
 
-### 3.1 Finalize Session File
-- Set frontmatter `status` to `completed`
-- Fill in all sections
+### 3.0 Determine Session End
+A session is considered complete when ANY of the following conditions is met:
 
-### 3.2 Update WORKING.md
-- Reflect the final state of work
-- Set `Next Steps` for the next session
+**Code Tasks (Implement/Fix/Refactor):**
+- All items in the goal are completed
+- Code compiles/builds without errors
+- Tests pass (if applicable)
+- User confirms the task is done
 
-### 3.3 Update SESSIONS/INDEX.md
-- Move the session from `Active Sessions` to `Recent Archives` table
-- Update `By Topic` and `By Channel` sections
+**Design/Requirements Tasks:**
+- Design document or spec is written and reviewed
+- User approves the design direction
+- Key decisions are recorded in DECISIONS.md
 
-### 3.4 Mark CHECKPOINT.md as Completed
-- Set `status` to `"completed"`
-- Update `lastUpdate` timestamp
+**Discussion/Exploration Tasks:**
+- User's questions are answered
+- Key insights are recorded
+
+**Interruption:**
+- User explicitly says "stop", "done", "that's all", or similar
+- Context window is approaching limits
+- Task scope changes significantly
+
+### 3.1 End Session
+**ALWAYS** end the session when work is complete:
+
+```bash
+pcp session end [session-id]
+```
+
+If only one active session exists, you can omit the session-id.
+
+### 3.2 Archive Session (Optional)
+To archive completed sessions:
+
+```bash
+pcp session archive <session-id>
+```
+
+This moves the session to `.ai-context/SESSIONS/ARCHIVED/` and updates the index.
+
+### 3.3 Update WORKING.md
+Update `.ai-context/WORKING.md` with the final state and `Next Steps` for the next session.
 
 ---
 
-## 4. Recovery: Abnormal Termination
+## 4. CLI Command Reference
 
-### 4.1 Detection
-If CHECKPOINT.md has `status: "in-progress"` and `lastUpdate` is older than 2 hours, report to the user:
-> "Previous session appears to have terminated abnormally."
+### Session Management
+```bash
+pcp session start <topic> [--goal "<goal>"]   # Start new session
+pcp session end [session-id]                   # End active session
+pcp session list [--archived|--all]            # List sessions
+pcp session search <query>                     # Search sessions
+pcp session archive <session-id>               # Archive session
+```
 
-### 4.2 Check Git State
-Run `git status` and `git diff --stat` to identify uncommitted changes.
+### Checkpoint
+```bash
+pcp checkpoint [--session <id>] [--status <s>] [--phase <p>] [--goal <g>]
+               [--completed "item1,item2"] [--inProgress "item"] [--remaining "item3"]
+               [--created "file1"] [--modified "file2"] [--channel <ch>]
+```
 
-### 4.3 Present Recovery Options
-1. **Continue** — Commit current changes and resume
-2. **Review** — Show all changes, then decide
-3. **Discard** — Revert all uncommitted changes
-4. **New Task** — Stash changes and start fresh
+### Recovery
+```bash
+pcp recovery              # Human-readable recovery status
+pcp recovery --json       # Machine-readable JSON output
+```
 
-### 4.4 After Recovery
-- Update CHECKPOINT.md with new session info
-- Create a new session file in WORKING/
-- Update SESSIONS/INDEX.md
+### Update
+```bash
+pcp update                # Re-scan project and update context files
+pcp update --dry-run      # Preview changes
+```
+
+### Status
+```bash
+pcp status                # Show PCP context status
+```
 
 ---
 
 ## 5. Channel Mechanism
 
 - The default channel is the current git branch name
-- Record the channel in session file frontmatter: `channel: <branch-name>`
-- Sessions on different channels are isolated in the INDEX.md `By Channel` section
+- Sessions are automatically tagged with the current channel
+- Sessions on different channels are isolated in `SESSIONS/INDEX.md`
 
 ---
 
@@ -125,7 +196,9 @@ Run `git status` and `git diff --stat` to identify uncommitted changes.
 
 - **NEVER skip loading BOOT.md** — it is the entry point for all context
 - **NEVER load all context files at once** — use task-based loading to save tokens
-- **ALWAYS update CHECKPOINT.md after subtasks** — this is your safety net
+- **ALWAYS start a session at the beginning of work** — use `pcp session start`
+- **ALWAYS update checkpoint after subtasks** — use `pcp checkpoint`
+- **ALWAYS end session when work is complete** — use `pcp session end`
 - **ALWAYS record decisions in DECISIONS.md** — future sessions need this context
 - **NEVER delete or modify ARCHIVED/ files** — they are the permanent record
 - **Keep BOOT.md under 500 tokens** — it must be lightweight for fast loading

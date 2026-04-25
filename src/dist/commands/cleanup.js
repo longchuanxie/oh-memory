@@ -9,7 +9,7 @@ async function cleanupCommand(_flags, _positional) {
         : ".ai-context/scripts/cleanup.sh";
     try {
         if (isWindows) {
-            (0, child_process_1.execSync)(`pwsh -File "${scriptPath}"`, { stdio: "inherit" });
+            (0, child_process_1.execSync)(`pwsh -ExecutionPolicy Bypass -File "${scriptPath}"`, { stdio: "inherit" });
         }
         else {
             (0, child_process_1.execSync)(`bash "${scriptPath}"`, { stdio: "inherit" });
@@ -17,7 +17,7 @@ async function cleanupCommand(_flags, _positional) {
     }
     catch (err) {
         console.error("Failed to run cleanup script. You can run it manually:");
-        console.error(`  ${isWindows ? "pwsh" : "bash"} ${scriptPath}`);
+        console.error(`  ${isWindows ? "pwsh -ExecutionPolicy Bypass -File" : "bash"} ${scriptPath}`);
     }
 }
 //# sourceMappingURL=cleanup.js.map

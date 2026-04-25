@@ -1,6 +1,6 @@
 {
-  "name": "pcp-cli",
-  "version": "0.1.0",
+  "name": "@xielc/pcp-cli",
+  "version": "0.2.1",
   "description": "Project Context Protocol — cross-session AI context persistence for any project",
   "bin": {
     "pcp": "./dist/cli.js"

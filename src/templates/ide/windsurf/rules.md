@@ -16,9 +16,24 @@ Load these files based on task type:
 ## Session Rules
 
 - **ALWAYS** read `.ai-context/BOOT.md` first
-- Update `.ai-context/CHECKPOINT.md` after each subtask
+- **ALWAYS** start session with `pcp session start <topic> --goal "<goal>"`
+- **ALWAYS** update checkpoint with `pcp checkpoint --completed "..." --inProgress "..."`
+- **ALWAYS** end session with `pcp session end`
 - Record decisions in `.ai-context/DECISIONS.md`
 - Keep `.ai-context/BOOT.md` under 500 tokens
+
+## CLI Commands
+
+```bash
+pcp session start <topic> [--goal "<goal>"]   # Start new session
+pcp session end [session-id]                   # End active session
+pcp session list [--archived|--all]            # List sessions
+pcp session search <query>                     # Search sessions
+pcp checkpoint [--completed "..."] [--inProgress "..."]
+pcp recovery --json                            # Check for stale sessions
+pcp update                                     # Update context files
+pcp status                                     # Show PCP status
+```
 
 ## Project Info
 

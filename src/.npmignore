@@ -1,0 +1,32 @@
+# Source files
+*.ts
+*.ts.map
+!dist/
+
+# Development
+node_modules/
+package-lock.json
+tsconfig.json
+
+# IDE and tool config
+.trae/
+openspec/
+.vscode/
+.idea/
+
+# Test directories
+test-pcp/
+
+# Documentation
+*.md
+!templates/
+
+# Git
+.git/
+.gitignore
+
+# AI context (project-specific, not for distribution)
+.ai-context/
+
+# Standalone scripts (not needed in npm package)
+standalone/
